@@ -18,7 +18,7 @@ enum AgentStatus: String {
 struct Agent {
     let paneID: String
     let workspaceID: String
-    let status: AgentStatus
+    var status: AgentStatus
     let title: String
     var focused: Bool
 

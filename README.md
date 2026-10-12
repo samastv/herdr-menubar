@@ -26,6 +26,6 @@ or just `scripts/build-app.sh && open build/HerdrMenubar.app`.
 
 Uninstall: `launchctl bootout gui/$(id -u)/dev.herdr-menubar && rm -rf ~/Applications/HerdrMenubar.app ~/Library/LaunchAgents/dev.herdr-menubar.plist`
 
-**Status:** early. It builds and connects to herdr's socket; the pulse, alert colors, and click-to-focus have not been verified visually yet.
+**Status:** early, but in daily use. herdr's status detector briefly misreads working agents as blocked/idle, so a status change is shown only after it has held for ~0.8s.
 
 Requires macOS 13+ and the Swift toolchain (Command Line Tools is enough). If you use a terminal other than iTerm2, change `terminalBundleID` in `StatusItem.swift`.
