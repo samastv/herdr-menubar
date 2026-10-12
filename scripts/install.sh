@@ -1,0 +1,17 @@
+#!/bin/bash
+# Installs the app to ~/Applications and starts it at login via a LaunchAgent.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+LABEL="dev.herdr-menubar"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+./scripts/build-app.sh
+mkdir -p "$HOME/Applications"
+launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+rm -rf "$HOME/Applications/HerdrMenubar.app"
+cp -R build/HerdrMenubar.app "$HOME/Applications/"
+
+sed "s|__HOME__|$HOME|g" launchd/$LABEL.plist > "$PLIST"
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
+echo "installed; running as $LABEL"
