@@ -1,6 +1,6 @@
 # herdr-menubar
 
-A tiny macOS menu bar indicator for [herdr](https://herdr.dev) agent sessions.
+A tiny macOS menu bar indicator for herdr agent sessions.
 
 - `●` dim: nothing needs you (`● 2` = two agents working)
 - `● N` pulsing **orange**: N agents finished and you haven't looked yet
@@ -25,5 +25,7 @@ scripts/install.sh   # builds, copies to ~/Applications, starts at login via Lau
 or just `scripts/build-app.sh && open build/HerdrMenubar.app`.
 
 Uninstall: `launchctl bootout gui/$(id -u)/dev.herdr-menubar && rm -rf ~/Applications/HerdrMenubar.app ~/Library/LaunchAgents/dev.herdr-menubar.plist`
+
+**Status:** early. It builds and connects to herdr's socket; the pulse, alert colors, and click-to-focus have not been verified visually yet.
 
 Requires macOS 13+ and the Swift toolchain (Command Line Tools is enough). If you use a terminal other than iTerm2, change `terminalBundleID` in `StatusItem.swift`.
