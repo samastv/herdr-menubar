@@ -106,7 +106,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         if !model.connected {
             menu.addItem(withTitle: "herdr not running", action: nil, keyEquivalent: "")
         }
-        let byWorkspace = Dictionary(grouping: model.orderedAgents, by: \.workspaceID)
+        let active = model.activeAgents
+        if model.connected && active.isEmpty {
+            menu.addItem(withTitle: "No active agents", action: nil, keyEquivalent: "")
+        }
+        let byWorkspace = Dictionary(grouping: active, by: \.workspaceID)
         for ws in byWorkspace.keys.sorted() {
             let header = NSMenuItem(title: model.workspaceLabels[ws] ?? ws, action: nil, keyEquivalent: "")
             header.isEnabled = false

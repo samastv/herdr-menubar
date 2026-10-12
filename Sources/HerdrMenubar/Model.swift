@@ -11,6 +11,8 @@ enum AgentStatus: String {
         case .idle, .unknown: return "·"
         }
     }
+
+    var isActive: Bool { self == .working || self == .blocked || self == .done }
 }
 
 struct Agent {
@@ -54,6 +56,7 @@ struct Model {
     }
 
     var orderedAgents: [Agent] { order.compactMap { agents[$0] } }
+    var activeAgents: [Agent] { orderedAgents.filter { $0.status.isActive } }
 
     /// Applies one `pane_updated` event in place. herdr has a single focused pane,
     /// so focusing one clears the flag on the rest rather than waiting for their own events.
