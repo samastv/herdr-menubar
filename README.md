@@ -13,7 +13,7 @@ Click the icon for a per-workspace list; picking a row focuses that pane in herd
 ## How it works
 
 It subscribes to herdr's socket API (`~/.config/herdr/herdr.sock`) for pane/tab/workspace events.
-`pane_updated` events are applied in place; other events trigger a debounced `session.snapshot`.
+`pane_updated` events are applied in place; other events, and a 2s timer (herdr emits no event when an agent stops at a prompt without its title changing), trigger a debounced `session.snapshot`.
 It reconnects automatically if herdr restarts.
 
 ## Install

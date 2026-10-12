@@ -4,10 +4,12 @@ import Foundation
 ///
 /// `pane_updated` events carry the whole pane, so they are applied directly. herdr emits
 /// them continuously (agent title spinners), so re-fetching a snapshot for each would
-/// dominate the app's work. Any other event is structural and triggers a snapshot instead.
+/// dominate the app's work. Any other event is structural and triggers a snapshot instead,
+/// as does a slow timer (see `start`).
 final class HerdrClient {
     private static let socketPath = NSString(string: "~/.config/herdr/herdr.sock").expandingTildeInPath
     private static let requestTimeout = timeval(tv_sec: 2, tv_usec: 0)
+    private static let pollInterval: TimeInterval = 2
 
     /// Called on the main queue with a fresh `session.snapshot`.
     var onSnapshot: (([String: Any]) -> Void)?
@@ -22,6 +24,7 @@ final class HerdrClient {
     // and a snapshot can never overwrite newer per-pane state.
     private let work = DispatchQueue(label: "herdr.snapshot")
     private let commands = DispatchQueue(label: "herdr.commands")
+    private lazy var pollTimer = DispatchSource.makeTimerSource(queue: work)
     private var refreshPending = false
 
     private static let subscriptions: [[String: String]] = [
@@ -31,6 +34,12 @@ final class HerdrClient {
 
     func start() {
         Thread.detachNewThread { self.subscribeLoop() }
+        // herdr emits no event when an agent's status changes without its title also changing,
+        // e.g. when a running agent stops at a permission prompt, so events alone miss exactly
+        // the transitions worth alerting on. A periodic snapshot is the backstop.
+        pollTimer.schedule(deadline: .now() + Self.pollInterval, repeating: Self.pollInterval)
+        pollTimer.setEventHandler { [weak self] in self?.refresh() }
+        pollTimer.resume()
     }
 
     /// Fire-and-forget request, e.g. `agent.focus`.
