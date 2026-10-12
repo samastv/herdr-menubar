@@ -18,30 +18,56 @@ struct Agent {
     let workspaceID: String
     let status: AgentStatus
     let title: String
-    let focused: Bool
+    var focused: Bool
+
+    /// Both `session.snapshot` agents and `pane_updated` events use this shape.
+    /// Panes without an agent status (plain shells) are not agents.
+    init?(_ dict: [String: Any]) {
+        guard let pane = dict["pane_id"] as? String, let status = dict["agent_status"] as? String else { return nil }
+        paneID = pane
+        workspaceID = dict["workspace_id"] as? String ?? ""
+        self.status = AgentStatus(rawValue: status) ?? .unknown
+        title = (dict["terminal_title_stripped"] as? String) ?? (dict["agent"] as? String) ?? pane
+        focused = dict["focused"] as? Bool ?? false
+    }
 }
 
 struct Model {
     var connected = false
-    var agents: [Agent] = []
-    var workspaceLabels: [String: String] = [:]
+    private(set) var agents: [String: Agent] = [:]
+    private var order: [String] = []
+    private(set) var workspaceLabels: [String: String] = [:]
 
     init() {}
 
     init(snapshot: [String: Any]) {
         connected = true
-        agents = (snapshot["agents"] as? [[String: Any]] ?? []).compactMap { a in
-            guard let pane = a["pane_id"] as? String else { return nil }
-            return Agent(
-                paneID: pane,
-                workspaceID: a["workspace_id"] as? String ?? "",
-                status: AgentStatus(rawValue: a["agent_status"] as? String ?? "") ?? .unknown,
-                title: (a["terminal_title_stripped"] as? String) ?? (a["agent"] as? String) ?? pane,
-                focused: a["focused"] as? Bool ?? false
-            )
+        for case let dict as [String: Any] in snapshot["agents"] as? [Any] ?? [] {
+            if let agent = Agent(dict) {
+                agents[agent.paneID] = agent
+                order.append(agent.paneID)
+            }
         }
-        for ws in snapshot["workspaces"] as? [[String: Any]] ?? [] {
+        for case let ws as [String: Any] in snapshot["workspaces"] as? [Any] ?? [] {
             if let id = ws["workspace_id"] as? String { workspaceLabels[id] = ws["label"] as? String ?? id }
+        }
+    }
+
+    var orderedAgents: [Agent] { order.compactMap { agents[$0] } }
+
+    /// Applies one `pane_updated` event in place. herdr has a single focused pane,
+    /// so focusing one clears the flag on the rest rather than waiting for their own events.
+    mutating func apply(pane dict: [String: Any]) {
+        guard let paneID = dict["pane_id"] as? String else { return }
+        guard let agent = Agent(dict) else {
+            agents[paneID] = nil
+            order.removeAll { $0 == paneID }
+            return
+        }
+        if agents[paneID] == nil { order.append(paneID) }
+        agents[paneID] = agent
+        if agent.focused {
+            for id in agents.keys where id != paneID { agents[id]?.focused = false }
         }
     }
 

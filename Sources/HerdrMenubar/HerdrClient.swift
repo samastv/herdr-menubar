@@ -2,20 +2,25 @@ import Foundation
 
 /// Talks to herdr's newline-delimited JSON API over its unix socket.
 ///
-/// Events are only used as "something changed" triggers; state is always
-/// re-read from `session.snapshot`, so there is no event-merging logic to drift.
+/// `pane_updated` events carry the whole pane, so they are applied directly. herdr emits
+/// them continuously (agent title spinners), so re-fetching a snapshot for each would
+/// dominate the app's work. Any other event is structural and triggers a snapshot instead.
 final class HerdrClient {
     static let socketPath = NSString(string: "~/.config/herdr/herdr.sock").expandingTildeInPath
 
     /// Called on the main queue. `nil` means herdr is unreachable.
     var onSnapshot: (([String: Any]?) -> Void)?
+    /// Called on the main queue with the `pane` object of a `pane_updated` event.
+    var onPaneUpdated: (([String: Any]) -> Void)?
 
-    private let work = DispatchQueue(label: "herdr.client")
+    // Separate queues so a click's command never waits behind a snapshot fetch.
+    private let work = DispatchQueue(label: "herdr.snapshot")
+    private let commands = DispatchQueue(label: "herdr.commands")
     private var refreshPending = false
 
     private static let subscriptions: [[String: String]] = [
-        "pane.updated", "pane.closed", "pane.agent_detected", "pane.focused",
-        "tab.renamed", "tab.closed", "workspace.renamed", "workspace.closed",
+        "pane.updated", "pane.created", "pane.closed", "pane.agent_detected",
+        "tab.renamed", "tab.closed", "workspace.created", "workspace.renamed", "workspace.closed",
     ].map { ["type": $0] }
 
     func start() {
@@ -24,7 +29,7 @@ final class HerdrClient {
 
     /// Fire-and-forget request, e.g. `agent.focus`.
     func send(_ method: String, params: [String: Any]) {
-        work.async { _ = Self.request(method, params) }
+        commands.async { _ = Self.request(method, params) }
     }
 
     // MARK: - subscription
@@ -38,13 +43,19 @@ final class HerdrClient {
                 var buffer = Data()
                 while let chunk = Self.read(fd) {
                     buffer.append(chunk)
-                    var sawEvent = false
+                    var needsSnapshot = false
                     while let nl = buffer.firstIndex(of: 0x0A) {
                         let line = buffer.subdata(in: buffer.startIndex..<nl)
                         buffer.removeSubrange(buffer.startIndex...nl)
-                        if (try? JSONSerialization.jsonObject(with: line) as? [String: Any])?["event"] != nil { sawEvent = true }
+                        guard let msg = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                              let event = msg["event"] as? String else { continue }
+                        if event == "pane_updated", let pane = (msg["data"] as? [String: Any])?["pane"] as? [String: Any] {
+                            DispatchQueue.main.async { self.onPaneUpdated?(pane) }
+                        } else {
+                            needsSnapshot = true
+                        }
                     }
-                    if sawEvent { refresh() }
+                    if needsSnapshot { refresh() }
                 }
                 close(fd)
             }
