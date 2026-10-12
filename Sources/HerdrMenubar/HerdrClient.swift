@@ -83,7 +83,7 @@ final class HerdrClient {
         work.async {
             if self.refreshPending { return }
             self.refreshPending = true
-            self.work.asyncAfter(deadline: .now() + 0.15) {
+            self.work.asyncAfter(deadline: .now() + 0.5) {
                 self.refreshPending = false
                 guard let snap = (Self.request("session.snapshot", [:])?["result"] as? [String: Any])?["snapshot"] as? [String: Any] else { return }
                 DispatchQueue.main.async { self.onSnapshot?(snap) }

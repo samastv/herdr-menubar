@@ -51,19 +51,17 @@ struct Model {
 
     var activeAgents: [Agent] { agents.filter { $0.status.isActive } }
 
-    /// Applies one `pane_updated` event in place. herdr has a single focused pane, so focusing
-    /// one clears the flag on the rest. That happens before the agent check so that focusing a
-    /// plain shell also un-focuses the agent you just left.
+    /// Applies one `pane_updated` event in place. The event's `focused` is the pane's focus within
+    /// its own tab, so several panes report it at once; only a snapshot carries the single global
+    /// focus. The event therefore never changes `focused`: it is kept from the last snapshot.
     mutating func apply(pane dict: [String: Any]) {
         guard let paneID = dict["pane_id"] as? String else { return }
-        if dict["focused"] as? Bool == true {
-            for i in agents.indices where agents[i].paneID != paneID { agents[i].focused = false }
-        }
         let index = agents.firstIndex { $0.paneID == paneID }
-        guard dict["agent"] is String, let agent = Agent(dict) else {
+        guard dict["agent"] is String, var agent = Agent(dict) else {
             if let index { agents.remove(at: index) }
             return
         }
+        agent.focused = index.map { agents[$0].focused } ?? false
         if let index { agents[index] = agent } else { agents.append(agent) }
     }
 
