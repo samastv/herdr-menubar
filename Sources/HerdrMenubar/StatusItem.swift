@@ -3,6 +3,7 @@ import AppKit
 final class StatusController: NSObject, NSMenuDelegate {
     private static let terminalBundleID = "com.googlecode.iterm2"
     private static let pulseKey = "pulse"
+    private static let settleDelay: TimeInterval = 0.8
 
     private enum Tint { case off, calm, done, blocked }
 
@@ -20,6 +21,8 @@ final class StatusController: NSObject, NSMenuDelegate {
     private var model = Model()
     private var terminalFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == StatusController.terminalBundleID
     private var shown: Display?
+    private var pending: Display?
+    private var settleTimer: Timer?
 
     init(client: HerdrClient) {
         self.client = client
@@ -64,11 +67,30 @@ final class StatusController: NSObject, NSMenuDelegate {
         return Display(text: working > 0 ? "● \(working)" : "●", tint: .calm, pulsing: false)
     }
 
+    /// herdr's status detector briefly misreads a working agent as `blocked` or `idle` for one
+    /// frame (~100ms) every few seconds. A change is therefore shown only once it has held for
+    /// `settleDelay`; a blip that reverts first never reaches the menu bar.
     private func render() {
         let next = display()
-        guard next != shown else { return }
-        shown = next
+        if shown == nil { return commit(next) }
+        if next == shown {
+            settleTimer?.invalidate()
+            pending = nil
+            return
+        }
+        if next == pending { return }
+        pending = next
+        settleTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.settleDelay, repeats: false) { [weak self] _ in
+            if let pending = self?.pending { self?.commit(pending) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        settleTimer = timer
+    }
 
+    private func commit(_ next: Display) {
+        shown = next
+        pending = nil
         item.button?.attributedTitle = NSAttributedString(
             string: next.text,
             attributes: [.foregroundColor: Self.color(next.tint), .font: NSFont.menuBarFont(ofSize: 0)]
