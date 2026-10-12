@@ -4,7 +4,8 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 let client = HerdrClient()
-let status = StatusController(client: client)
+// Held at top level: the status item and its callbacks live only as long as the controller.
+let controller = StatusController(client: client)
 client.start()
 
 app.run()

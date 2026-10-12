@@ -6,6 +6,7 @@
   <key>ProgramArguments</key>
   <array><string>__HOME__/Applications/HerdrMenubar.app/Contents/MacOS/HerdrMenubar</string></array>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key>
+  <dict><key>SuccessfulExit</key><false/></dict>
 </dict>
 </plist>

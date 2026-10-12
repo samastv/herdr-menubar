@@ -22,8 +22,8 @@ struct Agent {
     let title: String
     var focused: Bool
 
-    /// Both `session.snapshot` agents and `pane_updated` events use this shape.
-    /// Panes without an agent status (plain shells) are not agents.
+    /// Entries of a snapshot's `agents[]` are agents by definition. A `pane_updated` event
+    /// also covers plain shells (`agent` is null), so callers of this on events must check that.
     init?(_ dict: [String: Any]) {
         guard let pane = dict["pane_id"] as? String, let status = dict["agent_status"] as? String else { return nil }
         paneID = pane
@@ -36,42 +36,35 @@ struct Agent {
 
 struct Model {
     var connected = false
-    private(set) var agents: [String: Agent] = [:]
-    private var order: [String] = []
+    private(set) var agents: [Agent] = []
     private(set) var workspaceLabels: [String: String] = [:]
 
     init() {}
 
     init(snapshot: [String: Any]) {
         connected = true
-        for case let dict as [String: Any] in snapshot["agents"] as? [Any] ?? [] {
-            if let agent = Agent(dict) {
-                agents[agent.paneID] = agent
-                order.append(agent.paneID)
-            }
-        }
+        agents = (snapshot["agents"] as? [Any] ?? []).compactMap { ($0 as? [String: Any]).flatMap(Agent.init) }
         for case let ws as [String: Any] in snapshot["workspaces"] as? [Any] ?? [] {
             if let id = ws["workspace_id"] as? String { workspaceLabels[id] = ws["label"] as? String ?? id }
         }
     }
 
-    var orderedAgents: [Agent] { order.compactMap { agents[$0] } }
-    var activeAgents: [Agent] { orderedAgents.filter { $0.status.isActive } }
+    var activeAgents: [Agent] { agents.filter { $0.status.isActive } }
 
-    /// Applies one `pane_updated` event in place. herdr has a single focused pane,
-    /// so focusing one clears the flag on the rest rather than waiting for their own events.
+    /// Applies one `pane_updated` event in place. herdr has a single focused pane, so focusing
+    /// one clears the flag on the rest. That happens before the agent check so that focusing a
+    /// plain shell also un-focuses the agent you just left.
     mutating func apply(pane dict: [String: Any]) {
         guard let paneID = dict["pane_id"] as? String else { return }
-        guard let agent = Agent(dict) else {
-            agents[paneID] = nil
-            order.removeAll { $0 == paneID }
+        if dict["focused"] as? Bool == true {
+            for i in agents.indices where agents[i].paneID != paneID { agents[i].focused = false }
+        }
+        let index = agents.firstIndex { $0.paneID == paneID }
+        guard dict["agent"] is String, let agent = Agent(dict) else {
+            if let index { agents.remove(at: index) }
             return
         }
-        if agents[paneID] == nil { order.append(paneID) }
-        agents[paneID] = agent
-        if agent.focused {
-            for id in agents.keys where id != paneID { agents[id]?.focused = false }
-        }
+        if let index { agents[index] = agent } else { agents.append(agent) }
     }
 
     /// A pane you are already looking at (herdr-focused and the terminal is frontmost) needs no alert.

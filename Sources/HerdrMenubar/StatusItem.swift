@@ -4,7 +4,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     private static let terminalBundleID = "com.googlecode.iterm2"
     private static let pulseKey = "pulse"
 
-    private enum Tint { case off, idle, working, done, blocked }
+    private enum Tint { case off, calm, done, blocked }
 
     /// Everything that is visible in the menu bar. Setting the button title is a synchronous
     /// round-trip to the window server, so it is only done when this value changes.
@@ -30,7 +30,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         item.button?.wantsLayer = true
 
         client.onSnapshot = { [weak self] snap in
-            self?.model = snap.map(Model.init(snapshot:)) ?? Model()
+            self?.model = Model(snapshot: snap)
+            self?.render()
+        }
+        client.onDisconnect = { [weak self] in
+            self?.model = Model()
             self?.render()
         }
         client.onPaneUpdated = { [weak self] pane in
@@ -51,32 +55,31 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     private func display() -> Display {
         if !model.connected { return Display(text: "◌", tint: .off, pulsing: false) }
-        let alerts = model.orderedAgents.filter { model.needsAttention($0, terminalFrontmost: terminalFrontmost) }
+        let alerts = model.agents.filter { model.needsAttention($0, terminalFrontmost: terminalFrontmost) }
         if !alerts.isEmpty {
             let blocked = alerts.contains { $0.status == .blocked }
             return Display(text: "● \(alerts.count)", tint: blocked ? .blocked : .done, pulsing: true)
         }
-        let working = model.agents.values.filter { $0.status == .working }.count
-        return Display(text: working > 0 ? "● \(working)" : "●", tint: working > 0 ? .working : .idle, pulsing: false)
+        let working = model.agents.filter { $0.status == .working }.count
+        return Display(text: working > 0 ? "● \(working)" : "●", tint: .calm, pulsing: false)
     }
 
     private func render() {
         let next = display()
         guard next != shown else { return }
-        let previous = shown
         shown = next
 
         item.button?.attributedTitle = NSAttributedString(
             string: next.text,
             attributes: [.foregroundColor: Self.color(next.tint), .font: NSFont.menuBarFont(ofSize: 0)]
         )
-        if previous?.pulsing != next.pulsing { setPulse(next.pulsing) }
+        setPulse(next.pulsing)
     }
 
     private static func color(_ tint: Tint) -> NSColor {
         switch tint {
         case .off: return .tertiaryLabelColor
-        case .idle, .working: return .secondaryLabelColor
+        case .calm: return .secondaryLabelColor
         case .done: return .systemOrange
         case .blocked: return .systemRed
         }
@@ -85,6 +88,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     /// Core Animation runs the pulse in the render server, so it costs the app no per-frame work.
     private func setPulse(_ on: Bool) {
         guard let layer = item.button?.layer else { return }
+        layer.removeAnimation(forKey: Self.pulseKey)
         if on {
             let pulse = CABasicAnimation(keyPath: "opacity")
             pulse.fromValue = 1.0
@@ -94,8 +98,6 @@ final class StatusController: NSObject, NSMenuDelegate {
             pulse.repeatCount = .infinity
             pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             layer.add(pulse, forKey: Self.pulseKey)
-        } else {
-            layer.removeAnimation(forKey: Self.pulseKey)
         }
     }
 
@@ -112,9 +114,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
         let byWorkspace = Dictionary(grouping: active, by: \.workspaceID)
         for ws in byWorkspace.keys.sorted() {
-            let header = NSMenuItem(title: model.workspaceLabels[ws] ?? ws, action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            menu.addItem(header)
+            menu.addItem(withTitle: model.workspaceLabels[ws] ?? ws, action: nil, keyEquivalent: "")
             for agent in byWorkspace[ws] ?? [] {
                 let row = NSMenuItem(title: "\(agent.status.glyph)  \(agent.title)", action: #selector(focus(_:)), keyEquivalent: "")
                 row.target = self
